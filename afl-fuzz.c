@@ -67,6 +67,10 @@
 #include <sys/ioctl.h>
 #include <sys/file.h>
 
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
 #include <sys/sysctl.h>
 #endif /* __APPLE__ || __FreeBSD__ || __OpenBSD__ */
@@ -87,6 +91,11 @@
 #define EXP_ST static
 #endif /* ^AFL_LIB */
 
+/* Local port to communicate with python module. */
+#define PORT 7788
+
+/* sockt to communicate with python module. */
+int sock;
 /* Lots of globals, but mostly for the status UI and other things where it
    really makes no sense to haul them around as function parameters. */
 
@@ -4265,7 +4274,7 @@ static void show_stats(void)
   banner_pad = (80 - banner_len) / 2;
   memset(tmp, ' ', banner_pad);
 
-  sprintf(tmp + banner_pad, "%s " cLCY VERSION cLGN " (%s)", crash_mode ? cPIN "peruvian were-rabbit" : cYEL "american fuzzy lop", use_banner);
+  sprintf(tmp + banner_pad, "%s " cLCY VERSION cLGN " (%s)", crash_mode ? cPIN "peruvian were-rabbit" : cYEL "kmeans-AFL", use_banner);
 
   SAYF("\n%s\n\n", tmp);
 
@@ -5306,22 +5315,22 @@ static u8 fuzz_one(char **argv)
   u8 a_collect[MAX_AUTO_EXTRA];
   u32 a_len = 0;
 
-#ifdef IGNORE_FINDS
+  // #ifdef IGNORE_FINDS
 
-  /* In IGNORE_FINDS mode, skip any entries that weren't in the
-     initial data set. */
+  //   /* In IGNORE_FINDS mode, skip any entries that weren't in the
+  //          initial data set. */
 
-  if (queue_cur->depth > 1)
-    return 1;
+  //   if (queue_cur->depth > 1)
+  //     return 1;
 
-#else
+  // #else
 
   if (pending_favored)
   {
 
     /* If we have any favored, non-fuzzed new arrivals in the queue,
-       possibly skip to them at the expense of already-fuzzed or non-favored
-       cases. */
+             possibly skip to them at the expense of already-fuzzed or non-favored
+             cases. */
 
     if ((queue_cur->was_fuzzed || !queue_cur->favored) &&
         UR(100) < SKIP_TO_NEW_PROB)
@@ -5331,10 +5340,10 @@ static u8 fuzz_one(char **argv)
   {
 
     /* Otherwise, still possibly skip non-favored cases, albeit less often.
-       The odds of skipping stuff are higher for already-fuzzed inputs and
-       lower for never-fuzzed entries. */
+             The odds of skipping stuff are higher for already-fuzzed inputs and
+             lower for never-fuzzed entries. */
 
-    if (queue_cycle > 1 && !queue_cur->was_fuzzed)
+    if (!queue_cur->was_fuzzed)
     {
 
       if (UR(100) < SKIP_NFAV_NEW_PROB)
@@ -5348,9 +5357,8 @@ static u8 fuzz_one(char **argv)
     }
   }
 
-#endif /* ^IGNORE_FINDS */
+  // #endif /* ^IGNORE_FINDS */
 
-  if (not_on_tty)
   {
     ACTF("Fuzzing test case #%u (%u total, %llu uniq crashes found)...",
          current_entry, queued_paths, unique_crashes);
@@ -8255,6 +8263,32 @@ static void save_cmdline(u32 argc, char **argv)
 
 #ifndef AFL_LIB
 
+int connect_socket()
+{
+  /* connect to python module */
+  int sock = 0;
+  struct sockaddr_in serv_addr;
+  if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+  {
+    perror("Socket creation error");
+    exit(0);
+  }
+  memset(&serv_addr, '0', sizeof(serv_addr));
+  serv_addr.sin_family = AF_INET;
+  serv_addr.sin_port = htons(PORT);
+  if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0)
+  {
+    perror("Invalid address/ Address not supported");
+    exit(0);
+  }
+  if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+  {
+    perror("Connection Failed");
+    exit(0);
+  }
+  return sock;
+}
+
 /* Main entry point */
 
 int main(int argc, char **argv)
@@ -8613,6 +8647,21 @@ int main(int argc, char **argv)
   write_stats_file(0, 0, 0);
   save_auto();
 
+  sock = connect_socket();
+  OKF("success connect socket");
+
+  char arg[200] = "";
+  strcpy(arg, out_dir);
+  strcat(arg, " ");
+  char **now = use_argv;
+  while (*now)
+  {
+    strcat(arg, *now);
+    strcat(arg, " ");
+    now++;
+  }
+  send(sock, arg, strlen(arg), 0);
+
   if (stop_soon)
     goto stop_fuzzing;
 
@@ -8626,55 +8675,72 @@ int main(int argc, char **argv)
       goto stop_fuzzing;
   }
 
-  while (1)
+  // fuzz init
+
+  u8 skipped_fuzz;
+  cull_queue();
+
+  queue_cycle++;
+  current_entry = 0;
+  cur_skipped_paths = 0;
+  queue_cur = queue;
+
+  while (seek_to)
+  {
+    current_entry++;
+    seek_to--;
+    queue_cur = queue_cur->next;
+  }
+
+  show_stats();
+
+  if (not_on_tty)
+  {
+    ACTF("Start fuzz init seed");
+    fflush(stdout);
+  }
+
+  cycles_wo_finds = 0;
+
+  prev_queued = queued_paths;
+
+  if (sync_id && queue_cycle == 1 && getenv("AFL_IMPORT_FIRST"))
+    sync_fuzzers(use_argv);
+
+  skipped_fuzz = fuzz_one(use_argv);
+
+  if (!stop_soon && sync_id && !skipped_fuzz)
   {
 
-    u8 skipped_fuzz;
+    if (!(sync_interval_cnt++ % SYNC_INTERVAL))
+      sync_fuzzers(use_argv);
+  }
 
+  if (!stop_soon && exit_1)
+    stop_soon = 2;
+
+  send(sock, "endfirst", 8, 0);
+
+  int number = 0;
+  char buf[16];
+  memset(buf, 0, 16);
+  if (read(sock, buf, 5) == -1)
+  {
+    perror("Socket creation error");
+    exit(0);
+  }
+
+  number = atoi(buf);
+  queue_cur = queue;
+  for (int i = 0; i < number; i++)
+  {
+    queue_cur = queue_cur->next;
+  }
+  current_entry = number;
+
+  while (1)
+  {
     cull_queue();
-
-    if (!queue_cur)
-    {
-
-      queue_cycle++;
-      current_entry = 0;
-      cur_skipped_paths = 0;
-      queue_cur = queue;
-
-      while (seek_to)
-      {
-        current_entry++;
-        seek_to--;
-        queue_cur = queue_cur->next;
-      }
-
-      show_stats();
-
-      if (not_on_tty)
-      {
-        ACTF("Entering queue cycle %llu.", queue_cycle);
-        fflush(stdout);
-      }
-
-      /* If we had a full queue cycle with no new finds, try
-         recombination strategies next. */
-
-      if (queued_paths == prev_queued)
-      {
-
-        if (use_splicing)
-          cycles_wo_finds++;
-        else
-          use_splicing = 1;
-      }
-      else
-        cycles_wo_finds = 0;
-
-      prev_queued = queued_paths;
-
-      if (sync_id && queue_cycle == 1 && getenv("AFL_IMPORT_FIRST"))
-        sync_fuzzers(use_argv);
-    }
 
     skipped_fuzz = fuzz_one(use_argv);
 
@@ -8691,8 +8757,21 @@ int main(int argc, char **argv)
     if (stop_soon)
       break;
 
-    queue_cur = queue_cur->next;
-    current_entry++;
+    send(sock, "next", 4, 0);
+    memset(buf, 0, 16);
+    if (read(sock, buf, 5) == -1)
+    {
+      perror("Socket creation error");
+      exit(0);
+    }
+
+    number = atoi(buf);
+    queue_cur = queue;
+    for (int i = 0; i < number; i++)
+    {
+      queue_cur = queue_cur->next;
+    }
+    current_entry = number;
   }
 
   if (queue_cur)
