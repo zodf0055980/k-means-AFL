@@ -24,7 +24,7 @@ def signal_handler(sig, frame):
 
 signal.signal(signal.SIGINT, signal_handler)
 HOST = '127.0.0.1'
-PORT = 7788
+PORT = 7789
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.bind((HOST, PORT))
@@ -97,16 +97,16 @@ seed_group[0][0]['fuzzcount'] = seed_group[0][0]['fuzzcount'] + 1
 run_group = 0
 seed_count = len(cluster_labels)
 
-max_group_run = 3
+skip = 3
 while(1):
     require = conn.recv(5)
     print(require)
     if(require == b'next'):
+        skip = 3
         seed_list = [os.path.basename(x)
                      for x in glob.glob('./'+dirpath+'/queue/id*')]
         # have new path
-        if(seed_count < len(seed_list) and max_group_run > 0):
-            max_group_run = max_group_run - 1
+        if(seed_count < len(seed_list)):
             # sort first
             seed_group[run_group] = sorted(
                 seed_group[run_group], key=lambda k: k['fuzzcount'])
@@ -115,7 +115,7 @@ while(1):
                              [0]['id']).encode(encoding="utf-8"))
             # fuzz count ++
             seed_group[run_group][0]['fuzzcount'] = seed_group[run_group][0]['fuzzcount'] + 1
-            print(f"run rarget = {seed_group[run_group][0]['id']}")
+            print(f"run target = {seed_group[run_group][0]['id']}")
 
             # predict
             print(f"find new path {seed_count} to {len(seed_list)}")
@@ -147,7 +147,6 @@ while(1):
             seed_count = len(seed_list)
         # no new path
         else:
-            max_group_run = 3
             # run next group
             run_group = (run_group + 1) % kmeans_group
             seed_group[run_group] = sorted(
@@ -158,3 +157,22 @@ while(1):
             seed_group[run_group][0]['fuzzcount'] = seed_group[run_group][0]['fuzzcount'] + 1
             print(
                 f"run next group {run_group} rarget = {seed_group[run_group][0]['id']}")
+    elif(require == b'skip'):
+        if(skip == 0):
+            skip = 3
+            run_group = (run_group + 1) % kmeans_group
+            seed_group[run_group] = sorted(
+                seed_group[run_group], key=lambda k: k['fuzzcount'])
+            conn.sendall(str(seed_group[run_group][0]
+                             ['id']).encode(encoding="utf-8"))
+            print(
+                f"run next group {run_group} target = {seed_group[run_group][0]['id']}")
+            seed_group[run_group][0]['fuzzcount'] = seed_group[run_group][0]['fuzzcount'] + 1
+        else:
+            skip = skip - 1
+            seed_group[run_group] = sorted(
+                seed_group[run_group], key=lambda k: k['fuzzcount'])
+            conn.sendall(str(seed_group[run_group][0]
+                             ['id']).encode(encoding="utf-8"))
+            print(f"run target = {seed_group[run_group][0]['id']}")
+            seed_group[run_group][0]['fuzzcount'] = seed_group[run_group][0]['fuzzcount'] + 1
