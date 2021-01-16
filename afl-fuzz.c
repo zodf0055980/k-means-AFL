@@ -92,7 +92,7 @@
 #endif /* ^AFL_LIB */
 
 /* Local port to communicate with python module. */
-#define PORT 7788
+#define PORT 7789
 
 /* sockt to communicate with python module. */
 int sock;
@@ -3314,8 +3314,9 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
 {
 
   u8 *fn = "";
+  u8 *qn = "";
   u8 hnb;
-  s32 fd;
+  s32 fd, qd;
   u8 keeping = 0, res;
 
   if (fault == crash_mode)
@@ -3339,6 +3340,16 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
 #else
 
     fn = alloc_printf("%s/queue/id_%06u", out_dir, queued_paths);
+
+#endif /* ^!SIMPLE_FILES */
+
+#ifndef SIMPLE_FILES
+
+    qn = alloc_printf("%s/queue_info/queue/id:%06u,%s", out_dir, queued_paths,
+                      describe_op(hnb));
+#else
+
+    qn = alloc_printf("%s/queue_info/queue/id_%06u", out_dir, queued_paths);
 
 #endif /* ^!SIMPLE_FILES */
 
@@ -3367,6 +3378,13 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
     close(fd);
 
     keeping = 1;
+
+    qd = open(qn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (qd < 0)
+      PFATAL("Unable to create '%s'", qn);
+    ck_write(qd, "a", 1, qn);
+
+    close(fd);
   }
 
   switch (fault)
@@ -5314,16 +5332,6 @@ static u8 fuzz_one(char **argv)
 
   u8 a_collect[MAX_AUTO_EXTRA];
   u32 a_len = 0;
-
-  // #ifdef IGNORE_FINDS
-
-  //   /* In IGNORE_FINDS mode, skip any entries that weren't in the
-  //          initial data set. */
-
-  //   if (queue_cur->depth > 1)
-  //     return 1;
-
-  // #else
 
   if (pending_favored)
   {
@@ -7719,6 +7727,28 @@ EXP_ST void setup_dirs_fds(void)
     PFATAL("Unable to create '%s'", tmp);
   ck_free(tmp);
 
+  /* test */
+
+  tmp = alloc_printf("%s/queue_info", out_dir);
+  if (mkdir(tmp, 0700))
+    PFATAL("Unable to create '%s'", tmp);
+  ck_free(tmp);
+
+  tmp = alloc_printf("%s/queue_info/crashes", out_dir);
+  if (mkdir(tmp, 0700))
+    PFATAL("Unable to create '%s'", tmp);
+  ck_free(tmp);
+
+  tmp = alloc_printf("%s/queue_info/hangs", out_dir);
+  if (mkdir(tmp, 0700))
+    PFATAL("Unable to create '%s'", tmp);
+  ck_free(tmp);
+
+  tmp = alloc_printf("%s/queue_info/queue", out_dir);
+  if (mkdir(tmp, 0700))
+    PFATAL("Unable to create '%s'", tmp);
+  ck_free(tmp);
+
   /* Generally useful file descriptors. */
 
   dev_null_fd = open("/dev/null", O_RDWR);
@@ -8756,8 +8786,14 @@ int main(int argc, char **argv)
 
     if (stop_soon)
       break;
-
-    send(sock, "next", 4, 0);
+    if (!skipped_fuzz)
+    {
+      send(sock, "next", 4, 0);
+    }
+    else
+    {
+      send(sock, "skip", 4, 0);
+    }
     memset(buf, 0, 16);
     if (read(sock, buf, 5) == -1)
     {
