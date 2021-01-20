@@ -5367,6 +5367,7 @@ static u8 fuzz_one(char **argv)
 
   // #endif /* ^IGNORE_FINDS */
 
+  if (not_on_tty)
   {
     ACTF("Fuzzing test case #%u (%u total, %llu uniq crashes found)...",
          current_entry, queued_paths, unique_crashes);
