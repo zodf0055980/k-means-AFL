@@ -92,7 +92,7 @@
 #endif /* ^AFL_LIB */
 
 /* Local port to communicate with python module. */
-#define PORT 7789
+int PORT = 0;
 
 /* sockt to communicate with python module. */
 int sock;
@@ -8296,6 +8296,11 @@ static void save_cmdline(u32 argc, char **argv)
 
 int connect_socket()
 {
+  if (PORT == 0)
+  {
+    perror("You should define port by -p");
+    exit(0);
+  }
   /* connect to python module */
   int sock = 0;
   struct sockaddr_in serv_addr;
@@ -8343,7 +8348,7 @@ int main(int argc, char **argv)
   gettimeofday(&tv, &tz);
   srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
 
-  while ((opt = getopt(argc, argv, "+i:o:f:m:b:t:T:dnCB:S:M:x:QV")) > 0)
+  while ((opt = getopt(argc, argv, "+i:o:f:m:b:t:T:dnCB:S:M:x:p:QV")) > 0)
 
     switch (opt)
     {
@@ -8410,6 +8415,13 @@ int main(int argc, char **argv)
       if (extras_dir)
         FATAL("Multiple -x options not supported");
       extras_dir = optarg;
+      break;
+
+    case 'p': /* port */
+
+      if (PORT)
+        FATAL("Multiple -p options not supported");
+      PORT = atoi(optarg);
       break;
 
     case 't':

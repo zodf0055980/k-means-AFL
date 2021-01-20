@@ -25,8 +25,8 @@ def signal_handler(sig, frame):
 
 signal.signal(signal.SIGINT, signal_handler)
 HOST = '127.0.0.1'
-PORT = 7789
-
+PORT = int(sys.argv[1])
+print(f"port = {PORT}")
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.bind((HOST, PORT))
 sock.listen(1)
