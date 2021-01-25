@@ -8718,51 +8718,63 @@ int main(int argc, char **argv)
       goto stop_fuzzing;
   }
 
-  // fuzz init
-
-  u8 skipped_fuzz;
-  cull_queue();
-
-  queue_cycle++;
-  current_entry = 0;
-  cur_skipped_paths = 0;
+  int initial_seed_count = 0;
   queue_cur = queue;
-
-  while (seek_to)
+  while (queue_cur)
   {
-    current_entry++;
-    seek_to--;
+    initial_seed_count++;
     queue_cur = queue_cur->next;
   }
+  // fuzz init
+  OKF("initial_seed_count = %d", initial_seed_count);
+  queue_cur = queue;
+  current_entry = 0;
+  cur_skipped_paths = 0;
+  queue_cycle++;
 
-  show_stats();
-
-  if (not_on_tty)
+  int i;
+  for (i = 0; i < initial_seed_count; i++)
   {
-    ACTF("Start fuzz init seed");
-    fflush(stdout);
-  }
+    u8 skipped_fuzz;
+    cull_queue();
 
-  cycles_wo_finds = 0;
+    while (seek_to)
+    {
+      current_entry++;
+      seek_to--;
+      queue_cur = queue_cur->next;
+    }
 
-  prev_queued = queued_paths;
+    show_stats();
 
-  if (sync_id && queue_cycle == 1 && getenv("AFL_IMPORT_FIRST"))
-    sync_fuzzers(use_argv);
+    if (not_on_tty)
+    {
+      ACTF("Start fuzz init seed");
+      fflush(stdout);
+    }
 
-  skipped_fuzz = fuzz_one(use_argv);
+    prev_queued = queued_paths;
 
-  if (!stop_soon && sync_id && !skipped_fuzz)
-  {
-
-    if (!(sync_interval_cnt++ % SYNC_INTERVAL))
+    if (sync_id && queue_cycle == 1 && getenv("AFL_IMPORT_FIRST"))
       sync_fuzzers(use_argv);
+
+    skipped_fuzz = fuzz_one(use_argv);
+
+    if (!stop_soon && sync_id && !skipped_fuzz)
+    {
+      if (!(sync_interval_cnt++ % SYNC_INTERVAL))
+        sync_fuzzers(use_argv);
+    }
+
+    if (!stop_soon && exit_1)
+      stop_soon = 2;
+    queue_cur = queue_cur->next;
+    current_entry++;
   }
 
-  if (!stop_soon && exit_1)
-    stop_soon = 2;
-
-  send(sock, "endfirst", 8, 0);
+  char send_init_seed_count[20];
+  snprintf(send_init_seed_count, 20, "%d", initial_seed_count);
+  send(sock, send_init_seed_count, strlen(send_init_seed_count), 0);
 
   int number = 0;
   char buf[16];
@@ -8781,8 +8793,11 @@ int main(int argc, char **argv)
   }
   current_entry = number;
 
+  // original fuzz loop
+
   while (1)
   {
+    u8 skipped_fuzz;
     cull_queue();
 
     skipped_fuzz = fuzz_one(use_argv);

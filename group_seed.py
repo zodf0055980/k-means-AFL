@@ -40,7 +40,7 @@ argv = init_condition[1:]
 print(f"[*] dirpath = {dirpath}")
 print(f"[*] argv = {argv}")
 
-conn.recv(8)
+init_seed_count = int(conn.recv(8))
 seed_list = [os.path.basename(x) for x in glob.glob('./'+dirpath+'/queue/id*')]
 seed_list.sort()
 
@@ -58,7 +58,6 @@ out = ''
 
 for filename in seed_list:
     argv[argv_file_padding] = './'+dirpath+'/queue/' + filename
-    print(argv)
     tmp_list = []
     out = subprocess.check_output(
         ['./afl-showmap', '-q', '-e', '-o', '/dev/stdout', '-m', 'none', '-t', '500'] + argv)
@@ -87,8 +86,9 @@ cluster_labels = kmeans_fit.labels_
 print("[*] cluster_labels")
 print(cluster_labels)
 print("[*] show group")
-seed_group[cluster_labels[0]].append({"id": 0, "skip": 0, "fuzzcount": 1})
-for i in range(1, len(cluster_labels)):
+for i in range(0, init_seed_count):
+    seed_group[cluster_labels[i]].append({"id": i, "skip": 0, "fuzzcount": 1})
+for i in range(init_seed_count, len(cluster_labels)):
     seed_group[cluster_labels[i]].append({"id": i, "skip": 0, "fuzzcount": 0})
 for i in range(kmeans_group):
     seed_group[i] = sorted(seed_group[i], key=lambda k: k['fuzzcount'])
