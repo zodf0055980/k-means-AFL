@@ -41,7 +41,7 @@ print(f"[*] dirpath = {dirpath}")
 print(f"[*] argv = {argv}")
 
 init_seed_count = int(conn.recv(8))
-seed_list = [os.path.basename(x) for x in glob.glob('./'+dirpath+'/queue/id*')]
+seed_list = [os.path.basename(x) for x in glob.glob(dirpath+'/queue/id*')]
 seed_list.sort()
 
 # find @@ padding
@@ -57,7 +57,7 @@ tmp_cnt = []
 out = ''
 
 for filename in seed_list:
-    argv[argv_file_padding] = './'+dirpath+'/queue/' + filename
+    argv[argv_file_padding] = dirpath+'/queue/' + filename
     tmp_list = []
     out = subprocess.check_output(
         ['./afl-showmap', '-q', '-e', '-o', '/dev/stdout', '-m', 'none', '-t', '500'] + argv)
@@ -109,7 +109,7 @@ while(1):
         skip = max_skip
         # get current find path
         seed_list = [os.path.basename(x)
-                     for x in glob.glob('./'+dirpath+'/queue/id*')]
+                     for x in glob.glob(dirpath+'/queue/id*')]
 
         if(len(seed_list) > re_group):  # regroup
             print(f"[*] re group")
@@ -134,7 +134,7 @@ while(1):
             out = ''
 
             for filename in seed_list:
-                argv[argv_file_padding] = './'+dirpath+'/queue/' + filename
+                argv[argv_file_padding] = dirpath+'/queue/' + filename
                 print(argv)
                 tmp_list = []
                 out = subprocess.check_output(
@@ -192,7 +192,7 @@ while(1):
             seed_list.sort()
             predic = []
             for i in range(seed_count, len(seed_list)):
-                argv[argv_file_padding] = './'+dirpath+'/queue/' + seed_list[i]
+                argv[argv_file_padding] = dirpath+'/queue/' + seed_list[i]
                 out = subprocess.check_output(
                     ['./afl-showmap', '-q', '-e', '-o', '/dev/stdout', '-m', 'none', '-t', '500'] + argv)
                 tmp_list = []
