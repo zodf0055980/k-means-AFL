@@ -9,13 +9,9 @@ from sklearn import cluster, metrics
 import socket
 import signal
 
-kmeans_group = 30
+kmeans_group = 0
 regroup_count = 300
 seed_group = []
-
-# initial seed group
-for i in range(kmeans_group):
-    seed_group.append([])
 
 
 def signal_handler(sig, frame):
@@ -43,6 +39,13 @@ print(f"[*] argv = {argv}")
 init_seed_count = int(conn.recv(8))
 seed_list = [os.path.basename(x) for x in glob.glob(dirpath+'/queue/id*')]
 seed_list.sort()
+
+kmeans_group = int(len(seed_list) ** 0.5)
+print(f"[*] kmeans_group = {kmeans_group}")
+# initial seed group
+for i in range(kmeans_group):
+    seed_group.append([])
+
 
 # find @@ padding
 argv_file_padding = 0
@@ -98,7 +101,7 @@ print(f"[*] run rarget = {seed_group[0][0]['id']}")
 conn.sendall(str(seed_group[0][0]['id']).encode(encoding="utf-8"))
 run_group = 0
 seed_count = len(cluster_labels)
-re_group = ((seed_count // regroup_count) + 2) * regroup_count
+re_group = seed_count + (seed_count // 2)
 max_skip = 2
 skip = max_skip
 while(1):
@@ -127,7 +130,7 @@ while(1):
             print(all_seed)
 
             seed_count = len(seed_list)
-            re_group = ((seed_count // regroup_count) + 1) * regroup_count
+            re_group = seed_count + (seed_count // 2)
 
             raw_bitmap = {}
             tmp_cnt = []
@@ -158,13 +161,19 @@ while(1):
             fit_bitmap, indices = np.unique(
                 bitmap, return_index=True, axis=1)
             new_label = [label[f] for f in indices]
-
+            kmeans_group = int(len(seed_list) ** 0.5)
+            print(f"[*] kmeans_group = {kmeans_group}")
             kmeans_fit = cluster.KMeans(
                 n_clusters=kmeans_group).fit(fit_bitmap)
 
             cluster_labels = kmeans_fit.labels_
             print("[*] new cluster_labels")
             print(cluster_labels)
+
+            # initial seed group
+            seed_group = []
+            for i in range(kmeans_group):
+                seed_group.append([])
 
             for i in range(0, len(cluster_labels)):
                 seed_group[cluster_labels[i]].append(all_seed[i])
