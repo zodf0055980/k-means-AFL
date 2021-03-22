@@ -10,7 +10,7 @@ import socket
 import signal
 
 kmeans_group = 0
-regroup_count = 300
+
 seed_group = []
 
 
@@ -62,8 +62,11 @@ out = ''
 for filename in seed_list:
     argv[argv_file_padding] = dirpath+'/queue/' + filename
     tmp_list = []
-    out = subprocess.check_output(
-        ['./afl-showmap', '-q', '-e', '-o', '/dev/stdout', '-m', 'none', '-t', '500'] + argv)
+    try:
+        out = subprocess.check_output(
+            ['./afl-showmap', '-q', '-e', '-o', '/dev/stdout', '-m', 'none', '-t', '500'] + argv)
+    except subprocess.CalledProcessError:
+        print("Find crash")
     for line in out.splitlines():
         edge = line.split(b':')[0]
         tmp_cnt.append(edge)
@@ -140,8 +143,11 @@ while(1):
                 argv[argv_file_padding] = dirpath+'/queue/' + filename
                 print(argv)
                 tmp_list = []
-                out = subprocess.check_output(
-                    ['./afl-showmap', '-q', '-e', '-o', '/dev/stdout', '-m', 'none', '-t', '500'] + argv)
+                try:
+                    out = subprocess.check_output(
+                        ['./afl-showmap', '-q', '-e', '-o', '/dev/stdout', '-m', 'none', '-t', '500'] + argv)
+                except subprocess.CalledProcessError:
+                    print("This is a crash file")
                 for line in out.splitlines():
                     edge = line.split(b':')[0]
                     tmp_cnt.append(edge)
@@ -202,8 +208,11 @@ while(1):
             predic = []
             for i in range(seed_count, len(seed_list)):
                 argv[argv_file_padding] = dirpath+'/queue/' + seed_list[i]
-                out = subprocess.check_output(
-                    ['./afl-showmap', '-q', '-e', '-o', '/dev/stdout', '-m', 'none', '-t', '500'] + argv)
+                try:
+                    out = subprocess.check_output(
+                        ['./afl-showmap', '-q', '-e', '-o', '/dev/stdout', '-m', 'none', '-t', '500'] + argv)
+                except subprocess.CalledProcessError:
+                    print("Find crash")
                 tmp_list = []
                 for line in out.splitlines():
                     edge = line.split(b':')[0]
@@ -257,7 +266,7 @@ while(1):
                 seed_group[run_group], key=lambda k: (k['fuzzcount'], k['skip']), reverse=False)
             # this group is fuzz already
             if(seed_group[run_group][0]['skip'] > 0 or seed_group[run_group][0]['fuzzcount'] > 0):
-                print(f"[*] group {run_group} is not interesting")
+                print(f"[*] group {run_group} is all skip or been fuzz")
                 run_group = (run_group + 1) % kmeans_group
                 while not seed_group[run_group]:
                     run_group = (run_group + 1) % kmeans_group
